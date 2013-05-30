@@ -1,4 +1,12 @@
+# Vim files
+.*.s[a-w][a-z]
+*.un~
+Session.vim
+.netrwhist
+*~
 *.py[cod]
+
+# Python files
 
 # C extensions
 *.so
