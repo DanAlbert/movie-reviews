@@ -1,3 +1,4 @@
+import math
 import sys
 
 
@@ -25,7 +26,7 @@ class Review(object):
         self.label = label
 
 
-class ReviewList(list):
+class ReviewList(object):
     def __init__(self, features, labels):
         if len(features) != len(labels):
             raise RuntimeError('Feature and data length do not match')
@@ -45,19 +46,22 @@ class ReviewList(list):
 
 class Classifier(object):
     def __init__(self):
-        self.probabilities = {'pos': {}, 'neg': {}}
+        self.probabilities = {True: {}, False: {}}
         self.p_pos = 0
         self.p_neg = 0
 
     def train(self, training_data):
         for feature in training_data.feature_names:
             total = float(len(training_data.reviews))
+
             num_pos = 0
             num_pos_with_feat = 0
-            num_neg_with_feat = 0
             num_pos_no_feat = 0
+
+            num_neg = 0
+            num_neg_with_feat = 0
             num_neg_no_feat = 0
-            num_feat_present = 0
+
             """
             P(good | feat) = (P(feat | good) * P(good)) / P(feat)
             
@@ -76,29 +80,21 @@ class Classifier(object):
             """
             for review in training_data.reviews:
                 feat_present = review.features[feature]
-                if feat_present:
-                    num_feat_present += 1
                 if review.label == 'pos':
                     num_pos += 1
-                if review.label == 'pos':
                     if feat_present:
                         num_pos_with_feat += 1
                     else:
                         num_pos_no_feat += 1
-                if review.label == 'neg':
+                elif review.label == 'neg':
+                    num_neg += 1
                     if feat_present:
                         num_neg_with_feat += 1
                     else:
                         num_neg_no_feat += 1
+                else:
+                    raise RuntimeError('invalid label')
 
-            #p = float(num_pos_with_feat) / float(num_feat_present)
-
-            #p = (float(num_pos_with_feat) + 1) / (float(num_feat_present) + 2)
-            #self.probabilities['pos'][feature] = p
-            #p = (float(num_neg_with_feat) + 1) / (float(num_feat_present) + 2)
-            #self.probabilities['neg'][feature] = p
-
-            num_neg = float(total - num_pos)
             #print 'total %d' % total
             #print 'num_pos %d' % num_pos
             #print 'num_pos_with_feat %d' % num_pos_with_feat
@@ -107,42 +103,69 @@ class Classifier(object):
             #print 'num_pos_no_feat %d' % num_pos_no_feat
             #print 'num_neg_no_feat %d' % num_neg_no_feat
 
-            p = {
+            self.probabilities[True][feature] = {
                 True: (float(num_pos_with_feat) + 1) / (float(num_pos) + 2),
                 False: (float(num_pos_no_feat) + 1) / (float(num_pos) + 2),
             }
-            self.probabilities['pos'][feature] = p
-            p = {
+            self.probabilities[False][feature] = {
                 True: (float(num_neg_with_feat) + 1) / (float(num_neg) + 2),
                 False: (float(num_neg_no_feat) + 1) / (float(num_neg) + 2),
             }
-            self.probabilities['neg'][feature] = p
 
             self.p_pos = float(num_pos) / total
             self.p_neg = float(num_neg) / total
 
         #print 'probabilities:'
-        #print self.probabilities
+        #print self.probabilities[True]
+        #print self.probabilities[False]
 
     def classify(self, review):
-        pos_prod = 1.0
-        neg_prod = 1.0
+        pos_prod = math.log(1.0)
+        neg_prod = math.log(1.0)
         for feature, value in review.features.items():
-            if value:
-                pos_prod *= self.probabilities['pos'][feature][True]
-                neg_prod *= self.probabilities['neg'][feature][True]
-            else:
-                pos_prod *= self.probabilities['pos'][feature][False]
-                neg_prod *= self.probabilities['neg'][feature][False]
-        p_pos = self.p_pos * pos_prod
-        p_neg = self.p_neg * neg_prod
+            pos_prod += math.log(self.probabilities[True][feature][value])
+            neg_prod += math.log(self.probabilities[False][feature][value])
+        #print math.log(self.p_pos), math.log(self.p_neg), pos_prod, neg_prod
+        p_pos = math.log(self.p_pos) + pos_prod
+        p_neg = math.log(self.p_neg) + neg_prod
         #print 'p_pos: %f p_neg: %f' % (p_pos, p_neg)
         if p_pos > p_neg:
-            print 'pos'
+            return 1
         elif p_pos < p_neg:
+            return -1
+        else:
+            return 0
+
+
+def classify_and_show(classifier, review_list):
+    num_pos_correct = 0
+    num_pos_predictions = 0
+    num_neg_correct = 0
+    num_neg_predictions = 0
+    for idx, review in enumerate(review_list.reviews):
+        result = classifier.classify(review)
+        if result == 1:
+            print 'pos'
+        elif result == 0:
+            print 'neutral'
+        elif result == -1:
             print 'neg'
         else:
-            print 'unknown'
+            raise LogicError('invalid classifier result')
+
+        if review.label == 'pos':
+            num_pos_predictions += 1
+            if result == 1:
+                num_pos_correct += 1
+        elif review.label == 'neg':
+            num_neg_predictions += 1
+            if result == -1:
+                num_neg_correct += 1
+        else:
+            raise RuntimeError('invalid label in results')
+
+    print 'positive: %d%%' % (num_pos_correct * 100 / num_pos_predictions)
+    print 'negative: %d%%' % (num_neg_correct * 100 / num_neg_predictions)
 
 
 def main():
@@ -166,8 +189,11 @@ def main():
     classifier = Classifier()
     classifier.train(training_reviews)
 
-    for review in test_reviews.reviews:
-        classifier.classify(review)
+    print 'training data:'
+    classify_and_show(classifier, training_reviews)
+    print
+    print 'test data:'
+    classify_and_show(classifier, test_reviews)
 
 
 def usage():
